@@ -2,7 +2,7 @@ name: Cron Action
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */1 * * *'
+    - cron: '17,47 * * * *'
 
 
 jobs:
@@ -47,3 +47,4 @@ jobs:
         with:
           name: rss2telegram
           path: rss2telegram.db
+          retention-days: 7
