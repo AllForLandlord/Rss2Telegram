@@ -174,7 +174,7 @@ def check_topics(url):
     for tpc in reversed(feed['items'][:10]):
         if check_history(tpc.links[0].href):
             continue
-        add_to_history(tpc.links[0].href)
+        
         topic = {}
         topic['site_name'] = feed['feed']['title']
         topic['title'] = tpc.title.strip()
@@ -186,9 +186,10 @@ def check_topics(url):
             BUTTON_TEXT = set_text_vars(BUTTON_TEXT, topic)
         try:
             send_message(topic, BUTTON_TEXT)
+            add_to_history(tpc.links[0].href)
         except telebot.apihelper.ApiTelegramException as e:
             print(e)
-            pass
+            
 
 if __name__ == "__main__":
     for url in URL.split():
