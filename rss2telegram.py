@@ -31,23 +31,25 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 MAX_SEND_RETRIES = 3
 RETRY_DELAY_SECONDS = 5
+MAX_RETRY_WAIT_SECONDS = 60
 
 def add_to_history(link):
     conn = sqlite3.connect('rss2telegram.db')
-    cursor = conn.cursor()
-    aux = f'INSERT INTO history (link) VALUES ("{link}")'
-    cursor.execute(aux)
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO history (link) VALUES (?)', (link,))
+        conn.commit()
+    finally:
+        conn.close()
 
 def check_history(link):
     conn = sqlite3.connect('rss2telegram.db')
-    cursor = conn.cursor()
-    aux = f'SELECT * from history WHERE link="{link}"'
-    cursor.execute(aux)
-    data = cursor.fetchone()
-    conn.close()
-    return data
+    try:
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM history WHERE link = ?', (link,))
+        return cursor.fetchone()
+    finally:
+        conn.close()
 
 def firewall(text):
     try:
@@ -69,6 +71,7 @@ def firewall(text):
     return result
 
 def send_with_retry(send_func, *args, **kwargs):
+    waited_seconds = 0
     for attempt in range(MAX_SEND_RETRIES + 1):
         try:
             for arg in args:
@@ -88,15 +91,44 @@ def send_with_retry(send_func, *args, **kwargs):
                 parameters = result_json.get('parameters', {})
                 if isinstance(parameters, dict):
                     retry_after = parameters.get('retry_after')
-            delay = retry_after or RETRY_DELAY_SECONDS * (2 ** attempt)
+            try:
+                delay = max(0, int(retry_after)) if retry_after is not None else RETRY_DELAY_SECONDS * (2 ** attempt)
+            except (TypeError, ValueError):
+                delay = RETRY_DELAY_SECONDS * (2 ** attempt)
+            if waited_seconds + delay > MAX_RETRY_WAIT_SECONDS:
+                print(f'重试等待预算已达{MAX_RETRY_WAIT_SECONDS}秒，留待下次轮询（{e}）')
+                raise
             print(f'Telegram暂时发送失败，{delay}秒后重试（{attempt + 1}/{MAX_SEND_RETRIES}）：{e}')
             time.sleep(delay)
-        except (requests.exceptions.RequestException, telebot.apihelper.ApiException) as e:
+            waited_seconds += delay
+        except telebot.apihelper.ApiHTTPException as e:
+            status_code = getattr(getattr(e, 'result', None), 'status_code', None)
+            if status_code != 429 and (status_code is None or status_code < 500):
+                raise
+            if attempt == MAX_SEND_RETRIES:
+                raise
+            headers = getattr(getattr(e, 'result', None), 'headers', {})
+            retry_after = headers.get('Retry-After') if status_code == 429 else None
+            try:
+                delay = max(0, int(retry_after)) if retry_after is not None else RETRY_DELAY_SECONDS * (2 ** attempt)
+            except (TypeError, ValueError):
+                delay = RETRY_DELAY_SECONDS * (2 ** attempt)
+            if waited_seconds + delay > MAX_RETRY_WAIT_SECONDS:
+                print(f'重试等待预算已达{MAX_RETRY_WAIT_SECONDS}秒，留待下次轮询（{e}）')
+                raise
+            print(f'发送暂时失败，{delay}秒后重试（{attempt + 1}/{MAX_SEND_RETRIES}）：{e}')
+            time.sleep(delay)
+            waited_seconds += delay
+        except requests.exceptions.ConnectTimeout as e:
             if attempt == MAX_SEND_RETRIES:
                 raise
             delay = RETRY_DELAY_SECONDS * (2 ** attempt)
+            if waited_seconds + delay > MAX_RETRY_WAIT_SECONDS:
+                print(f'重试等待预算已达{MAX_RETRY_WAIT_SECONDS}秒，留待下次轮询（{e}）')
+                raise
             print(f'发送暂时失败，{delay}秒后重试（{attempt + 1}/{MAX_SEND_RETRIES}）：{e}')
             time.sleep(delay)
+            waited_seconds += delay
 
 def create_telegraph_post(topic):
     telegraph_auth = telegraph.Telegraph(
@@ -112,9 +144,16 @@ def create_telegraph_post(topic):
     )
     return response["url"]
 
+def try_create_telegraph_post(topic):
+    try:
+        return create_telegraph_post(topic)
+    except Exception as e:
+        print(f'Telegraph页面创建失败，稍后重新尝试（{topic["title"]}）：{e}')
+        return False
+
 def send_message(topic, button):
     if DRYRUN == 'failure':
-        return
+        return False
 
     MESSAGE_TEMPLATE = os.environ.get(f'MESSAGE_TEMPLATE', False)
 
@@ -123,13 +162,15 @@ def send_message(topic, button):
     else:
         MESSAGE_TEMPLATE = f'<b>{topic["title"]}</b>'
 
-    if TELEGRAPH_TOKEN:
-        iv_link = create_telegraph_post(topic)
-        MESSAGE_TEMPLATE = f'<a href="{iv_link}">󠀠</a>{MESSAGE_TEMPLATE}'
-
     if not firewall(str(topic)):
         print(f'xxx {topic["title"]}')
-        return
+        return True
+
+    if TELEGRAPH_TOKEN:
+        iv_link = try_create_telegraph_post(topic)
+        if not iv_link:
+            return False
+        MESSAGE_TEMPLATE = f'<a href="{iv_link}">󠀠</a>{MESSAGE_TEMPLATE}'
 
     btn_link = button
     if button:
@@ -137,39 +178,47 @@ def send_message(topic, button):
         btn = types.InlineKeyboardButton(f'{button}', url=topic['link'])
         btn_link.row(btn)
 
+    if topic['photo'] and not TELEGRAPH_TOKEN and not HIDE_BUTTON:
+        try:
+            response = requests.get(topic['photo'], headers={'User-agent': 'Mozilla/5.1'}, timeout=(3, 10))
+            response.raise_for_status()
+            with open('img', 'wb') as image_file:
+                image_file.write(response.content)
+        except requests.exceptions.RequestException as e:
+            print(f'图片下载失败，改为文字发送（{topic["title"]}）：{e}')
+            topic['photo'] = False
+
     if HIDE_BUTTON or TELEGRAPH_TOKEN:
         for dest in DESTINATION.split(','):
             send_with_retry(bot.send_message, dest, MESSAGE_TEMPLATE, parse_mode='HTML', reply_to_message_id=TOPIC)
     else:
         if topic['photo'] and not TELEGRAPH_TOKEN:
-            response = requests.get(topic['photo'], headers = {'User-agent': 'Mozilla/5.1'})
-            open('img', 'wb').write(response.content)
             for dest in DESTINATION.split(','):
-                photo = open('img', 'rb')
                 try:
-                    send_with_retry(bot.send_photo, dest, photo, caption=MESSAGE_TEMPLATE, parse_mode='HTML', reply_markup=btn_link, reply_to_message_id=TOPIC)
+                    with open('img', 'rb') as photo:
+                        send_with_retry(bot.send_photo, dest, photo, caption=MESSAGE_TEMPLATE, parse_mode='HTML', reply_markup=btn_link, reply_to_message_id=TOPIC)
                 except telebot.apihelper.ApiTelegramException as e:
                     error_code = getattr(e, 'error_code', None)
-                    if error_code == 429 or (error_code is not None and error_code >= 500):
+                    if error_code != 400:
                         raise
-                    topic['photo'] = False
+                    print(f'图片发送失败，改为文字发送（{topic["title"]}）：{e}')
                     send_with_retry(bot.send_message, dest, MESSAGE_TEMPLATE, parse_mode='HTML', reply_markup=btn_link, disable_web_page_preview=True, reply_to_message_id=TOPIC)
         else:
             for dest in DESTINATION.split(','):
                 send_with_retry(bot.send_message, dest, MESSAGE_TEMPLATE, parse_mode='HTML', reply_markup=btn_link, disable_web_page_preview=True, reply_to_message_id=TOPIC)
     print(f'... {topic["title"]}')
     time.sleep(0.2)
+    return True
 
 def get_img(url):
     try:
-        response = requests.get(url, headers = {'User-agent': 'Mozilla/5.1'}, timeout=3)
+        response = requests.get(url, headers={'User-agent': 'Mozilla/5.1'}, timeout=(3, 10))
+        response.raise_for_status()
         html = BeautifulSoup(response.content, 'html.parser')
         photo = html.find('meta', {'property': 'og:image'})['content']
-    except TypeError:
-        photo = False
-    except requests.exceptions.ReadTimeout:
-        photo = False
-    except requests.exceptions.TooManyRedirects:
+    except (TypeError, KeyError, requests.exceptions.RequestException) as e:
+        if not isinstance(e, (TypeError, KeyError)):
+            print(f'无法获取文章图片：{e}')
         photo = False
     return photo
 
@@ -221,8 +270,8 @@ def check_topics(url):
         if BUTTON_TEXT:
             BUTTON_TEXT = set_text_vars(BUTTON_TEXT, topic)
         try:
-            send_message(topic, BUTTON_TEXT)
-            add_to_history(tpc.links[0].href)
+            if send_message(topic, BUTTON_TEXT):
+                add_to_history(tpc.links[0].href)
         except (telebot.apihelper.ApiTelegramException, telebot.apihelper.ApiException, requests.exceptions.RequestException) as e:
             print(e)
             
