@@ -2,78 +2,78 @@
 
 # Rss2Telegram
 
-Envio automático de feed RSS para pessoa, canal ou grupo no Telegram.
+自动将 RSS 订阅内容发送给 Telegram 用户、频道或群组。
 
-[Mais explicações e exemplos de uso aqui](https://blog.gabrf.com/posts/Rss2Telegram/).
+[更多说明和使用示例](https://blog.gabrf.com/posts/Rss2Telegram/)。
 
-## Participe:
+## 参与项目
 
-Participe das conversas sobre o projeto na aba [Discussions](https://github.com/GabrielRF/Rss2Telegram/discussions).
+欢迎在 [Discussions](https://github.com/GabrielRF/Rss2Telegram/discussions) 中参与项目讨论。
 
-Issues também são sempre bem vindas.
+也欢迎提交 Issue。
 
-## Configuração:
+## 配置
 
-Defina as variáveis na aba `Secrets` do repositório:
+在仓库的 `Secrets` 中设置以下变量：
 
-`BOT_TOKEN`: Token do bot que enviará as mensagens no canal ([@BotFather](https://t.me/BotFather));
+`BOT_TOKEN`：用于发送消息的机器人令牌（[@BotFather](https://t.me/BotFather)）。
 
-Defina as variáveis na aba `Variables` do repositório:
+在仓库的 `Variables` 中设置以下变量：
 
-`DESTINATION`: Destinos das mensagens separados por vírgulas (`@destino` ou ID). Opcionalmente, remova a variável e crie um arquivo de nome `DESTINATION.txt` com os valores;
+`DESTINATION`：消息接收目标，多个目标用逗号分隔（`@目标` 或 ID）。也可以不设置此变量，改为创建 `DESTINATION.txt` 文件并填写目标。
 
-`URL`: Endereços de feeds RSS, separados por "enter", ou seja, um por linha. Opcionalmente, remova a variável e crie um arquivo de nome `URL.txt` com os valores;
+`URL`：RSS 订阅地址，每行填写一个。也可以不设置此变量，改为创建 `URL.txt` 文件并填写地址。
 
-`PARAMETERS`: (opcional) Parâmetros que serão adicionados ao fim do link;
+`PARAMETERS`：（可选）追加到链接末尾的参数。
 
-`MESSAGE_TEMPLATE`: (opcional) Texto da mensagem. Valor padrão: `<b>{TITLE}</b>` ([ver opções](#opções-de-variáveis));
+`MESSAGE_TEMPLATE`：（可选）消息模板。默认值：`<b>{TITLE}</b>`（[可用变量](#变量选项)）。
 
-`BUTTON_TEXT`: (opcional) Texto do botão com o link. Sugestão: `{SITE_NAME}`. Se esta variável não for criada não será enviado um botão. ([Ver opções](#opções-de-variáveis));
+`BUTTON_TEXT`：（可选）链接按钮的文字，建议使用 `{SITE_NAME}`。未设置时不发送按钮（[可用变量](#变量选项)）。
 
-`EMOJIS`: (opcional) Emojis separados por vírgulas. Podem ser usados na mensagem ou no botão;
+`EMOJIS`：（可选）用逗号分隔的表情符号，可用于消息或按钮。
 
-`TOPIC`: (opcional) ID do tópico em que a mensagem será enviada. Necessário para grupos com a opção de tópicos ativada. [Como obter um ID de um tópico](#id-de-tópico)
+`TOPIC`：（可选）消息发送到的话题 ID。启用了话题功能的群组需要设置此项。[如何获取话题 ID](#话题-id)
 
-`TELEGRAPH_TOKEN`: (opcional) Chave para acesso ao Telegraph. [Como obter uma chave Telegraph](#chave-telegraph)
+`TELEGRAPH_TOKEN`：（可选）Telegraph 访问令牌。[如何获取 Telegraph 令牌](#telegraph-令牌)
 
-`HIDE_BUTTON`: (opcional) Caso definida, desabilita o botão no envio, permitindo assim a existência do `Leitura Rápida`.
+`HIDE_BUTTON`：（可选）设置后隐藏消息按钮，从而允许使用 `快速浏览`。
 
-### Opções de variáveis
+### 变量选项
 
-`{SITE_NAME}`: Nome do site;
+`{SITE_NAME}`：网站名称。
 
-`{TITLE}`: Título do post;
+`{TITLE}`：文章标题。
 
-`{SUMMARY}`: Sumário do post;
+`{SUMMARY}`：文章摘要。
 
-`{LINK}`: Link do post;
+`{LINK}`：文章链接。
 
-`{EMOJI}`: Emoji escolhido aleatoriamente da lista.
+`{EMOJI}`：从列表中随机选取的表情符号。
 
-## Filtros
+## 过滤规则
 
-Por padrão, todos os elementos do feed RSS serão enviados. Caso queira filtrar o conteúdo, crie um arquivo chamado `RULES.txt` e adicione as regras desejadas ao arquivo. As regras serão executadas em ordem!
+默认会发送 RSS 订阅中的所有条目。若要过滤内容，请创建 `RULES.txt` 文件并添加规则。规则将按顺序执行。
 
-> O valor contido em termo funcionará independente de letras maiúsculas ou minúsculas.
+> 规则中的匹配词不区分大小写。
 
-`ACCEPT:ALL`: Todas as mensagens serão enviadas;
+`ACCEPT:ALL`：发送所有消息。
 
-`DROP:ALL`: Todas as mensagens não serão enviadas;
+`DROP:ALL`：不发送任何消息。
 
-`ACCEPT:termo`: A mensagem será enviada se `termo` estiver presente;
+`ACCEPT:词语`：消息中包含该词语时发送。
 
-`DROP:termo`: A mensagem não será enviada se `termo` estiver presente.
+`DROP:词语`：消息中包含该词语时不发送。
 
-### Exemplos de Filtros:
+### 过滤规则示例
 
-1. Todos as mensagens serão enviadas, menos as que tiverem o termo `política`:
+1. 发送所有消息，但不发送包含 `政治` 的消息：
 
 ```
 ACCEPT:ALL
 DROP:Política
 ```
 
-2. Nenhuma mensagem será enviada, com exceção das mensagens com os termos `futebol` e `vôlei`:
+2. 不发送任何消息，但发送包含 `足球` 或 `排球` 的消息：
 
 ```
 DROP:ALL
@@ -81,35 +81,35 @@ ACCEPT:futebol
 ACCEPT:vôlei
 ```
 
-## Uso
+## 使用方法
 
-Faça um *Fork*, defina as variáveis e habilite a ação em "*Enable workflow*". Pronto! 
+Fork 此仓库，设置变量，然后点击“*Enable workflow*”启用工作流即可。
 
 ![Enable Workflow](https://user-images.githubusercontent.com/7331540/178158090-bf774cae-071b-4ac2-ab03-9c5c1132b79e.png)
 
-A ação irá buscar as atualizações a cada hora conforme definido no arquivo [cron.yml](.github/workflows/cron.yml).
+工作流会按照 [cron.yml](.github/workflows/cron.yml) 中的设置每小时检查一次更新。
 
-## ID de tópico
+## 话题 ID
 
-Caso o grupo tenha a opção de tópicos ativada, será necessário indicar em qual tópico a mensagem será enviada. Isto é feito usando-se a variável `TOPIC`. A maneira mais fácil de se obter um ID de um tópico é copiando o link de uma mensagem de um tópico. O ID será o penúltimo número do link.
+如果群组启用了话题功能，需要使用 `TOPIC` 变量指定消息发送到哪个话题。最简单的获取方式是复制话题中一条消息的链接；链接中的倒数第二个数字就是话题 ID。
 
-Exemplo: O link para uma mensagem de um tópico seria `https://t.me/c/987654321/123/4567`. Neste caso, `123` seria o ID do tópico, o número que deveria ser colocado na variável.
+例如，话题消息链接为 `https://t.me/c/987654321/123/4567` 时，话题 ID 是 `123`，应将其填入该变量。
 
-## Chave Telegraph
+## Telegraph 令牌
 
-> Atenção: Caso a variável <i>TELEGRAPH_TOKEN</i> esteja definida, o post não terá botão ou imagem, pois ambos não permitiriam a existência da opção "Visualização Rápida".
+> 注意：设置 <i>TELEGRAPH_TOKEN</i> 后，文章消息将不包含按钮或图片，因为这两者与“快速浏览”功能不兼容。
 
-Para criar sua chave de acesso ao Telegraph e gerar a <i>Visualização Rápida</i> de qualquer site, acesse:
+要创建 Telegraph 访问令牌，并为网站生成<i>快速浏览</i>页面，请访问：
 
 ```
 https://api.telegra.ph/createAccount?short_name=<SHORT_NAME>&author_name=<AUTHOR_NAME>
 ```
 
-* `SHORT_NAME`: Uma abreviação de seu nome;
+* `SHORT_NAME`：名称缩写。
 
-* `AUTHOR_NAME`: Seu nome.
+* `AUTHOR_NAME`：名称。
 
-A resposta do site será algo como:
+网站返回的结果类似如下：
 
 ```
 {
@@ -124,4 +124,4 @@ A resposta do site será algo como:
 }
 ```
 
-O valor presente em `access_token` é o valor a ser usado na variável `TELEGRAPH_TOKEN`.
+将 `access_token` 的值填入 `TELEGRAPH_TOKEN` 变量。

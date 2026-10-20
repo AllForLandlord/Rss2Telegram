@@ -138,7 +138,7 @@ def create_telegraph_post(topic):
         f'{topic["title"]}',
         html_content=(
             f'{topic["summary"]}<br><br>'
-            + f'<a href="{topic["link"]}">Ver original ({topic["site_name"]})</a>'
+            + f'<a href="{topic["link"]}">查看原文（{topic["site_name"]}）</a>'
         ),
         author_name=f'{topic["site_name"]}'
     )
@@ -163,7 +163,7 @@ def send_message(topic, button):
         MESSAGE_TEMPLATE = f'<b>{topic["title"]}</b>'
 
     if not firewall(str(topic)):
-        print(f'xxx {topic["title"]}')
+        print(f'已按过滤规则跳过：{topic["title"]}')
         return True
 
     if TELEGRAPH_TOKEN:
@@ -206,7 +206,7 @@ def send_message(topic, button):
         else:
             for dest in DESTINATION.split(','):
                 send_with_retry(bot.send_message, dest, MESSAGE_TEMPLATE, parse_mode='HTML', reply_markup=btn_link, disable_web_page_preview=True, reply_to_message_id=TOPIC)
-    print(f'... {topic["title"]}')
+        print(f'发送成功：{topic["title"]}')
     time.sleep(0.2)
     return True
 
@@ -253,9 +253,9 @@ def check_topics(url):
     try:
         source = feed['feed']['title']
     except KeyError:
-        print(f'\nERRO: {url} não parece um feed RSS válido.')
+        print(f'\n错误：{url} 似乎不是有效的 RSS 订阅源。')
         return
-    print(f'\nChecando {source}:{url}')
+    print(f'\n正在检查 {source}：{url}')
     for tpc in reversed(feed['items'][:10]):
         if check_history(tpc.links[0].href):
             continue
