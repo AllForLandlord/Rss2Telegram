@@ -29,6 +29,9 @@ TELEGRAPH_TOKEN = os.environ.get('TELEGRAPH_TOKEN', False)
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
+MAX_SEND_RETRIES = 3
+RETRY_DELAY_SECONDS = 5
+
 def add_to_history(link):
     conn = sqlite3.connect('rss2telegram.db')
     cursor = conn.cursor()
@@ -64,6 +67,36 @@ def firewall(text):
         elif arg.lower() in text.lower() and opt == 'ACCEPT':
             result = True
     return result
+
+def send_with_retry(send_func, *args, **kwargs):
+    for attempt in range(MAX_SEND_RETRIES + 1):
+        try:
+            for arg in args:
+                if hasattr(arg, 'seek'):
+                    arg.seek(0)
+            return send_func(*args, **kwargs)
+        except telebot.apihelper.ApiTelegramException as e:
+            error_code = getattr(e, 'error_code', None)
+            if error_code != 429 and (error_code is None or error_code < 500):
+                raise
+            if attempt == MAX_SEND_RETRIES:
+                raise
+
+            retry_after = None
+            result_json = getattr(e, 'result_json', None)
+            if error_code == 429 and isinstance(result_json, dict):
+                parameters = result_json.get('parameters', {})
+                if isinstance(parameters, dict):
+                    retry_after = parameters.get('retry_after')
+            delay = retry_after or RETRY_DELAY_SECONDS * (2 ** attempt)
+            print(f'Telegram暂时发送失败，{delay}秒后重试（{attempt + 1}/{MAX_SEND_RETRIES}）：{e}')
+            time.sleep(delay)
+        except (requests.exceptions.RequestException, telebot.apihelper.ApiException) as e:
+            if attempt == MAX_SEND_RETRIES:
+                raise
+            delay = RETRY_DELAY_SECONDS * (2 ** attempt)
+            print(f'发送暂时失败，{delay}秒后重试（{attempt + 1}/{MAX_SEND_RETRIES}）：{e}')
+            time.sleep(delay)
 
 def create_telegraph_post(topic):
     telegraph_auth = telegraph.Telegraph(
@@ -106,7 +139,7 @@ def send_message(topic, button):
 
     if HIDE_BUTTON or TELEGRAPH_TOKEN:
         for dest in DESTINATION.split(','):
-            bot.send_message(dest, MESSAGE_TEMPLATE, parse_mode='HTML', reply_to_message_id=TOPIC)
+            send_with_retry(bot.send_message, dest, MESSAGE_TEMPLATE, parse_mode='HTML', reply_to_message_id=TOPIC)
     else:
         if topic['photo'] and not TELEGRAPH_TOKEN:
             response = requests.get(topic['photo'], headers = {'User-agent': 'Mozilla/5.1'})
@@ -114,13 +147,16 @@ def send_message(topic, button):
             for dest in DESTINATION.split(','):
                 photo = open('img', 'rb')
                 try:
-                    bot.send_photo(dest, photo, caption=MESSAGE_TEMPLATE, parse_mode='HTML', reply_markup=btn_link, reply_to_message_id=TOPIC)
-                except telebot.apihelper.ApiTelegramException:
+                    send_with_retry(bot.send_photo, dest, photo, caption=MESSAGE_TEMPLATE, parse_mode='HTML', reply_markup=btn_link, reply_to_message_id=TOPIC)
+                except telebot.apihelper.ApiTelegramException as e:
+                    error_code = getattr(e, 'error_code', None)
+                    if error_code == 429 or (error_code is not None and error_code >= 500):
+                        raise
                     topic['photo'] = False
-                    send_message(topic, button)
+                    send_with_retry(bot.send_message, dest, MESSAGE_TEMPLATE, parse_mode='HTML', reply_markup=btn_link, disable_web_page_preview=True, reply_to_message_id=TOPIC)
         else:
             for dest in DESTINATION.split(','):
-                bot.send_message(dest, MESSAGE_TEMPLATE, parse_mode='HTML', reply_markup=btn_link, disable_web_page_preview=True, reply_to_message_id=TOPIC)
+                send_with_retry(bot.send_message, dest, MESSAGE_TEMPLATE, parse_mode='HTML', reply_markup=btn_link, disable_web_page_preview=True, reply_to_message_id=TOPIC)
     print(f'... {topic["title"]}')
     time.sleep(0.2)
 
@@ -187,7 +223,7 @@ def check_topics(url):
         try:
             send_message(topic, BUTTON_TEXT)
             add_to_history(tpc.links[0].href)
-        except telebot.apihelper.ApiTelegramException as e:
+        except (telebot.apihelper.ApiTelegramException, telebot.apihelper.ApiException, requests.exceptions.RequestException) as e:
             print(e)
             
 
